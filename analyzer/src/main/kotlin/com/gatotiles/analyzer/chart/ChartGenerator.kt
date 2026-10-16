@@ -55,7 +55,7 @@ internal class DifficultyParams(
         fun of(d: Difficulty): DifficultyParams = when (d) {
             Difficulty.EASY -> DifficultyParams(2, 0.34, 0.8, 2.0, 0.45, 0.8, 1.0, 0.45, false, 0.0, 8.0, 0.60, 0.25, 0.0, 0.34)
             Difficulty.NORMAL -> DifficultyParams(3, 0.21, 1.3, 3.3, 0.3, 0.55, 1.0, 0.40, false, 0.03, 4.0, 0.40, 0.20, 0.15, 0.21)
-            Difficulty.HARD -> DifficultyParams(3, 0.118, 2.0, 5.2, 0.18, 0.32, 0.75, 0.32, true, 0.07, 2.0, 0.26, 0.18, 0.5, 0.105)
+            Difficulty.HARD -> DifficultyParams(3, 0.105, 2.3, 5.9, 0.15, 0.28, 0.75, 0.32, true, 0.07, 2.0, 0.26, 0.18, 0.8, 0.09)
             Difficulty.EXPERT -> DifficultyParams(4, 0.095, 2.8, 7.4, 0.1, 0.15, 0.5, 0.28, true, 0.11, 1.0, 0.18, 0.15, 1.0, 0.07)
         }
     }

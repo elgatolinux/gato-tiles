@@ -3,7 +3,7 @@ package com.gatotiles.analyzer.model
 import kotlinx.serialization.Serializable
 
 /** Bump when the analysis changes so cached charts get regenerated. */
-const val ANALYZER_VERSION = 4
+const val ANALYZER_VERSION = 5
 
 const val DEFAULT_LANES = 4
 

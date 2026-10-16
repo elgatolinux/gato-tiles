@@ -208,7 +208,7 @@ class AnalyzerTest {
     /**
      * Fast repeated notes (Rush E style): every strong note is followed ~96 ms later by a
      * quieter re-strike of the same key. The re-strikes barely raise the energy, but they form
-     * an even train, so Expert must play them; Hard keeps its own minimum gap.
+     * an even train, so Expert and Hard must play them; Normal keeps its own minimum gap.
      */
     @Test
     fun fastRepeatedNotesBecomeTiles() {
@@ -240,7 +240,42 @@ class AnalyzerTest {
         assertTrue("weak re-strikes covered $covered/${heard.size}", covered >= heard.size * 0.9)
         assertTrue("tiles off the real attacks: worst $worst", worst < 0.025)
         val hard = r.chart.chart(Difficulty.HARD).notes.map { it.t / 1000.0 }.distinct()
-        assertTrue("hard keeps its gap", hard.zipWithNext().all { (a, b) -> b - a >= 0.1 })
+        val hardCovered = heard.count { w -> hard.any { abs(it - w) < 0.025 } }
+        println("fast notes: hard tiles=%d covered %d/%d".format(hard.size, hardCovered, heard.size))
+        assertTrue("hard re-strikes covered $hardCovered/${heard.size}", hardCovered >= heard.size * 0.8)
+        assertTrue("hard keeps its train gap", hard.zipWithNext().all { (a, b) -> b - a >= 0.085 })
+        val normal = r.chart.chart(Difficulty.NORMAL).notes.map { it.t / 1000.0 }.distinct()
+        assertTrue("normal keeps its gap", normal.zipWithNext().all { (a, b) -> b - a >= 0.2 })
+        assertTrue("hard is harder than normal", r.chart.chart(Difficulty.HARD).level > r.chart.chart(Difficulty.NORMAL).level)
+    }
+
+    /** The fastest trains (~80 ms, Rush E's climax) are note by note only on Expert. */
+    @Test
+    fun fastestTrainsAreExpertOnly() {
+        val s = Synth(44100, 22.0, seed = 5)
+        val attacks = ArrayList<Double>()
+        var t = 1.0
+        var k = 0
+        while (t < 20.0) {
+            for (j in 0 until 6) {
+                val tt = t + j * 0.08
+                if (j == 0) s.kick(tt, 0.5f)
+                s.tone(tt, 0.07, listOf(72, 74, 76, 77, 79, 81)[(j + k) % 6], if (j == 0) 0.24f else 0.14f)
+                attacks.add(tt)
+            }
+            t += 0.48
+            k++
+        }
+        val r = s.analyze()
+        val inside = attacks.filter { it > 3.0 && it < 18.0 }
+        val heard = inside.filter { a -> r.onsets.any { abs(it.time - a) < 0.025 } }
+        val expert = r.chart.chart(Difficulty.EXPERT).notes.map { it.t / 1000.0 }.distinct()
+        val hard = r.chart.chart(Difficulty.HARD).notes.map { it.t / 1000.0 }.distinct()
+        val covered = heard.count { a -> expert.any { abs(it - a) < 0.025 } }
+        println("fastest trains: heard %d/%d expert %d covered %d hard %d".format(heard.size, inside.size, expert.size, covered, hard.size))
+        assertTrue("runs heard ${heard.size}/${inside.size}", heard.size >= inside.size / 2)
+        assertTrue("expert runs covered $covered/${heard.size}", covered >= heard.size * 0.8)
+        assertTrue("hard keeps its train gap", hard.zipWithNext().all { (a, b) -> b - a >= 0.085 })
         assertTrue("expert is harder", r.chart.chart(Difficulty.EXPERT).level > r.chart.chart(Difficulty.HARD).level)
     }
 
