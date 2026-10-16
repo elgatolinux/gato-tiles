@@ -20,6 +20,14 @@ enum class GameMode(val label: String, val description: String) {
     RHYTHM("Ritmo", "Precisión, combo y barra de vida"),
 }
 
+/** Whether tiles fall faster in the busier parts of the song, and how much faster at most. */
+@Serializable
+enum class SpeedFlow(val label: String, val boost: Double) {
+    OFF("No", 0.0),
+    SOFT("Suave", 0.2),
+    STRONG("Intensa", 0.4),
+}
+
 @Serializable
 enum class SortOrder(val label: String) {
     TITLE("Título"),
@@ -41,6 +49,8 @@ data class Settings(
     val lanes: Int = 4,
     /** 1..10; higher = tiles approach faster. */
     val scrollSpeed: Int = 6,
+    /** Faster tiles in the loud, busy parts of the song (choruses, climaxes). */
+    val speedFlow: SpeedFlow = SpeedFlow.OFF,
     /** Added to judgments: positive when the player hears/taps late (from calibration). */
     val inputOffsetMs: Int = 0,
     /** Shifts where tiles are drawn relative to the audio. */

@@ -42,6 +42,12 @@ ni internet.
 - **3 o 4 carriles**: en Ajustes o tocando «4 carriles» en la pantalla de la canción. El ritmo
   es el mismo; con 3 las teclas son más anchas.
 - **Vista de pista** 3D (perspectiva real) o plana; se cambia en Ajustes.
+- **Velocidad variable** (*Ajustes → Velocidad variable*: No / Suave / Intensa): las teclas
+  caen más rápido en las partes más movidas de la canción (estribillos, clímax) y vuelven a tu
+  velocidad en las tranquilas. Cada parte se mide por su volumen y por cuántas teclas tiene;
+  el cambio es gradual y empieza un poco antes de la parte nueva. Con *Intensa* llegan a ir
+  un 40 % más rápido. Las teclas siempre llegan a la línea en su momento exacto, y las que
+  vienen ya se ven más separadas antes de acelerar.
 - **Visuales**: portada desenfocada de fondo con auroras de color, disco con la portada que
   late con el ritmo, barras de espectro en tiempo real, teclas neón con el color de la
   portada, partículas, ondas de choque y textos con brillo.
@@ -57,13 +63,13 @@ No hace falta root.
 Descarga el APK de la última versión en
 [Releases](https://github.com/elgatolinux/gato-tiles/releases/latest).
 
-**Opción A (sin cables):** abre `GatoTiles-0.3.3.apk` en el teléfono y acepta instalar desde
+**Opción A (sin cables):** abre `GatoTiles-0.4.0.apk` en el teléfono y acepta instalar desde
 orígenes desconocidos. Se instala encima de la versión anterior sin perder récords.
 
 **Opción B (USB):** activa *Opciones de desarrollador → Depuración USB*, conecta el teléfono y:
 
 ```sh
-~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.3.3.apk
+~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.4.0.apk
 ```
 
 La primera vez pide permiso para leer la música. Para que la sincronía sea buena con tus

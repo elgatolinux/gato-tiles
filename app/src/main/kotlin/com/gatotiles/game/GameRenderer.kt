@@ -24,6 +24,7 @@ import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -490,6 +491,17 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
             }
             val n = formatInt(fps, false)
             c.drawText(chars, 0, n, 12 * density, h - 14 * density, fpsPaint)
+            if (s.scroll !== ScrollMap.CONSTANT) {
+                // Current tile speed of "Velocidad variable", e.g. ×1.25.
+                val x = 12 * density + fpsPaint.measureText(chars, 0, n) + 8 * density
+                val k = (s.scroll.speedAt(songMs) * 100).roundToInt().coerceIn(0, 999)
+                chars[0] = '×'
+                chars[1] = '0' + k / 100
+                chars[2] = '.'
+                chars[3] = '0' + k / 10 % 10
+                chars[4] = '0' + k % 10
+                c.drawText(chars, 0, 5, x, h - 14 * density, fpsPaint)
+            }
         }
     }
 
@@ -655,6 +667,7 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
 
         // Beat lines scrolling with the tiles (brighter on bar lines).
         val beats = s.songChart.beatsMs
+        val base = s.scroll.pos(songMs)
         if (beats.isNotEmpty()) {
             var lo = 0
             var hi = beats.size
@@ -664,8 +677,9 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
                 if (beats[mid] < from) lo = mid + 1 else hi = mid
             }
             var i = lo
-            while (i < beats.size && beats[i] <= songMs + l.approachMs) {
-                val v = beats[i] - songMs
+            while (i < beats.size) {
+                val v = s.scroll.pos(beats[i].toDouble()) - base
+                if (v > l.approachMs) break
                 val y = l.planeY(v)
                 val bar = Math.floorMod(i - s.songChart.downbeatPhase, 4) == 0
                 val fade = (1f - (v / l.approachMs).toFloat()).coerceIn(0f, 1f)
@@ -697,7 +711,7 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
         hitCorePaint.alpha = 230
         c.drawRect(0f, l.hitY - 1.2f * density, l.trackW, l.hitY + 1.2f * density, hitCorePaint)
 
-        drawNotes(c, l, sp, songMs, nowMs)
+        drawNotes(c, l, sp, songMs, base, nowMs)
         drawBursts(c, l, sp, nowMs)
         drawFailTile(c, l, sp, nowMs)
         c.restore()
@@ -736,7 +750,8 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
         drawColored(c, kind, alpha)
     }
 
-    private fun drawNotes(c: Canvas, l: TrackLayout, sp: Sprites, songMs: Double, nowMs: Long) {
+    /** [base] is the track distance of [songMs]: a tile at time t is pos(t) - base from the hit line. */
+    private fun drawNotes(c: Canvas, l: TrackLayout, sp: Sprites, songMs: Double, base: Double, nowMs: Long) {
         val notes = s.engine.notes
         if (notes.isEmpty()) return
         // First note that can still be visible (holds may start a few seconds back).
@@ -747,17 +762,18 @@ class GameRenderer(context: Context, private val s: GameSession, private val art
             val mid = (lo + hi) ushr 1
             if (notes[mid].timeMs < from) lo = mid + 1 else hi = mid
         }
-        val limit = songMs + l.approachMs + l.tileLenMs
+        val scroll = s.scroll
+        val limit = l.approachMs + l.tileLenMs
         val minV = l.vAt(l.planeBottom) - l.tileLenMs
         // Pass 1: hold bodies (under everything). Pass 2: tiles.
         for (pass in 0..1) {
             var i = lo
             while (i < notes.size) {
                 val n = notes[i]
-                if (n.timeMs > limit) break
+                val v = scroll.pos(n.timeMs.toDouble()) - base
+                if (v > limit) break
                 i++
-                val v = n.timeMs - songMs
-                val vEnd = n.endMs - songMs
+                val vEnd = if (n.isHold) scroll.pos(n.endMs.toDouble()) - base else v
                 if (vEnd < minV && v < minV) continue
                 val x = n.lane * l.laneW + sp.gap
                 if (pass == 0) {

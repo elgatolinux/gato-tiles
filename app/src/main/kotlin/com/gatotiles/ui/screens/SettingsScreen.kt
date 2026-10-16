@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.TrendingUp
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ColorLens
@@ -61,6 +62,7 @@ import com.gatotiles.BuildConfig
 import com.gatotiles.GatoApp
 import com.gatotiles.analyzer.model.LANE_OPTIONS
 import com.gatotiles.data.ColorFlow
+import com.gatotiles.data.SpeedFlow
 import com.gatotiles.data.ThemeMode
 import com.gatotiles.data.TrackStyle
 import com.gatotiles.ui.components.SettingRow
@@ -124,6 +126,12 @@ fun SettingsScreen(onBack: () -> Unit, onCalibrate: () -> Unit, onFolders: () ->
                         Icons.Rounded.Speed, "Velocidad de las teclas", "${s.scrollSpeed}  ·  ${s.approachMs} ms de caída",
                         s.scrollSpeed.toFloat(), 1f..10f, 8,
                     ) { v -> app.settings.update { it.copy(scrollSpeed = v.roundToInt()) } }
+                    ChoiceRow(
+                        Icons.AutoMirrored.Rounded.TrendingUp, "Velocidad variable", SpeedFlow.entries.map { it.label }, s.speedFlow.ordinal,
+                        subtitle = "Las teclas caen más rápido en las partes más movidas de la canción (estribillos, clímax) y vuelven a tu velocidad en las tranquilas",
+                    ) { i ->
+                        app.settings.update { it.copy(speedFlow = SpeedFlow.entries[i]) }
+                    }
                     ChoiceRow(Icons.Rounded.AutoAwesome, "Efectos visuales", listOf("Bajos", "Medios", "Altos"), s.effects) { i ->
                         app.settings.update { it.copy(effects = i) }
                     }

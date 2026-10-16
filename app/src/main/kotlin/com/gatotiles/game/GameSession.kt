@@ -15,6 +15,7 @@ import com.gatotiles.data.GameMode
 import com.gatotiles.data.ResolvedColors
 import com.gatotiles.data.Settings
 import com.gatotiles.data.Song
+import com.gatotiles.data.SpeedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +51,13 @@ class GameSession(
     val timeline = ColorTimeline(colors.palettes, colors.flow, songChart.sections, songChart.durationMs)
     val engine = GameEngine(songChart.chart(difficulty, settings.lanes), mode, settings.noFail, this)
     val lanes = engine.lanes
+    /** Where tiles are drawn: plain time, or faster in the busy parts of the song. */
+    val scroll: ScrollMap = if (settings.speedFlow == SpeedFlow.OFF) {
+        ScrollMap.CONSTANT
+    } else {
+        val times = engine.notes.map { it.timeMs }.distinct().toIntArray()
+        ScrollMap.forSong(songChart.sections, times, songChart.durationMs, settings.speedFlow.boost, settings.approachMs)
+    }
     val player = SongPlayer(appContext, song.uri)
     private val renderer = GameRenderer(appContext, this, art)
     private val _ui = MutableStateFlow<GameUiState>(GameUiState.Ready)
@@ -173,7 +181,9 @@ class GameSession(
                     } else {
                         val vTouch = l.vAt(tmp[1])
                         val shown = player.songTimeMs(ev.nanos) - settings.visualOffsetMs
-                        val tile = engine.tileAt(lane, shown + vTouch, l.tileLenMs.toDouble(), songAt, nowMs)
+                        // The song time drawn under the finger, and how long a tile lasts there.
+                        val touchMs = scroll.timeAt(scroll.pos(shown) + vTouch)
+                        val tile = engine.tileAt(lane, touchMs, l.tileLenMs / scroll.speedAt(touchMs), songAt, nowMs)
                         engine.tapClassic(ev.id, lane, vTouch, tile, songAt)
                     }
                 }
@@ -255,7 +265,9 @@ class GameSession(
         phase = Phase.FAILING
         failNanos = System.nanoTime()
         frozenSongMs = player.songTimeMs(failNanos) - settings.visualOffsetMs
-        renderer.onFail(reason, lane, vMs, note, failNanos / 1_000_000L)
+        // A missed tile comes with its time from the hit line; the renderer wants track distance.
+        val v = if (reason == FailReason.MISSED_TILE && note != null) scroll.pos(note.timeMs.toDouble()) - scroll.pos(note.timeMs - vMs) else vMs
+        renderer.onFail(reason, lane, v, note, failNanos / 1_000_000L)
         vibrate(140)
     }
 
