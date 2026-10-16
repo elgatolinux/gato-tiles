@@ -57,13 +57,13 @@ No hace falta root.
 Descarga el APK de la última versión en
 [Releases](https://github.com/elgatolinux/gato-tiles/releases/latest).
 
-**Opción A (sin cables):** abre `GatoTiles-0.3.2.apk` en el teléfono y acepta instalar desde
+**Opción A (sin cables):** abre `GatoTiles-0.3.3.apk` en el teléfono y acepta instalar desde
 orígenes desconocidos. Se instala encima de la versión anterior sin perder récords.
 
 **Opción B (USB):** activa *Opciones de desarrollador → Depuración USB*, conecta el teléfono y:
 
 ```sh
-~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.3.2.apk
+~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.3.3.apk
 ```
 
 La primera vez pide permiso para leer la música. Para que la sincronía sea buena con tus
@@ -129,6 +129,9 @@ y el video muestra las teclas cayendo con la música.
      cada nota suene débil, porque una serie de distancias iguales no aparece por casualidad
      (el crujido de un vinilo es irregular); Difícil las toca completas hasta unas 10 notas
      por segundo y Experto también las más rápidas;
+   - las series regulares más lentas (por ejemplo, notas repetidas suaves entre las de la
+     melodía) cuentan si tienen al menos 8 notas seguidas sin huecos, para que las partes
+     tranquilas de una canción muy dinámica no se queden con pocas teclas;
    - Fácil sigue los tiempos y los golpes más fuertes; Difícil, la mayoría de los ataques
      claros; Experto, casi todos;
    - las largas siguen notas sostenidas y las dobles marcan los acentos más fuertes;

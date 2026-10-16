@@ -240,15 +240,24 @@ class ChartGenerator(
      * Onsets that belong to a fast, evenly spaced train of attacks (repeated notes, trills,
      * runs, streams). A piano key struck again while the previous note still rings barely
      * raises the energy, so such notes look weak, but a run of equal gaps does not happen by
-     * chance: vinyl crackle and other noise are irregular.
+     * chance: vinyl crackle and other noise are irregular. Slower streams (soft repeated notes
+     * between the melody notes, as in the quiet start of Rush E) come about by chance more
+     * easily, so they need more notes and none missing.
      */
     private fun trainMembers(): BooleanArray {
         val out = BooleanArray(onsets.size)
         val idx = onsets.indices.filter { onsets[it].strength >= 0.04f }
+        markTrains(idx, out, TRAIN_MIN_GAP, TRAIN_MAX_GAP, TRAIN_MIN_LENGTH, allowMissed = true)
+        markTrains(idx, out, TRAIN_MAX_GAP, SLOW_TRAIN_MAX_GAP, SLOW_TRAIN_MIN_LENGTH, allowMissed = false)
+        return out
+    }
+
+    /** Marks in [out] the onsets of [idx] that form trains whose first gap is in [minGap]..[maxGap]. */
+    private fun markTrains(idx: List<Int>, out: BooleanArray, minGap: Double, maxGap: Double, minLength: Int, allowMissed: Boolean) {
         var a = 0
         while (a < idx.size - 1) {
             val first = onsetTimes[idx[a + 1]] - onsetTimes[idx[a]]
-            if (first < TRAIN_MIN_GAP || first > TRAIN_MAX_GAP) {
+            if (first < minGap || first > maxGap) {
                 a++
                 continue
             }
@@ -261,7 +270,7 @@ class ChartGenerator(
                 // A gap of two steps is one note the detector missed; the train goes on.
                 slots += when {
                     abs(d - gap) <= tol -> 1
-                    abs(d - 2 * gap) <= 1.5 * tol -> 2
+                    allowMissed && abs(d - 2 * gap) <= 1.5 * tol -> 2
                     else -> break
                 }
                 b++
@@ -269,14 +278,13 @@ class ChartGenerator(
             }
             val steps = b - a
             // Too many missed notes and it is more likely chance than a real train.
-            if (steps + 1 >= TRAIN_MIN_LENGTH && 2 * (slots - steps) <= steps) {
+            if (steps + 1 >= minLength && 2 * (slots - steps) <= steps) {
                 for (k in a..b) out[idx[k]] = true
                 a = b
             } else {
                 a++
             }
         }
-        return out
     }
 
     /** Onset strengths with the weak members of each train raised towards its strong ones. */
@@ -801,6 +809,8 @@ class ChartGenerator(
         private const val TRAIN_MIN_GAP = 0.075
         private const val TRAIN_MAX_GAP = 0.15
         private const val TRAIN_MIN_LENGTH = 5
+        private const val SLOW_TRAIN_MAX_GAP = 0.25
+        private const val SLOW_TRAIN_MIN_LENGTH = 8
         private const val TRAIN_SHARE = 0.6f
     }
 }

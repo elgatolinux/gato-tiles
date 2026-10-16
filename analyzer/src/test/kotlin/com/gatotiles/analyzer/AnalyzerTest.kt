@@ -279,6 +279,43 @@ class AnalyzerTest {
         assertTrue("expert is harder", r.chart.chart(Difficulty.EXPERT).level > r.chart.chart(Difficulty.HARD).level)
     }
 
+    /**
+     * Quiet start of Rush E: melody notes every ~0.39 s with a soft re-strike of the same key
+     * halfway between them, long before a loud ending. The quiet part gets a small loudness
+     * budget and the re-strikes look like noise, but the even stream makes them real notes.
+     */
+    @Test
+    fun softStreamBeforeLoudEnding() {
+        val s = Synth(44100, 40.0, seed = 7)
+        val weak = ArrayList<Double>()
+        var t = 1.0
+        var k = 0
+        while (t < 19.0) {
+            s.tone(t, 0.18, 64, 0.1f)
+            s.tone(t, 0.36, listOf(45, 52, 48, 50)[(k / 4) % 4], 0.08f)
+            s.tone(t + 0.195, 0.16, 64, 0.1f)
+            weak.add(t + 0.195)
+            t += 0.39
+            k++
+        }
+        t = 20.0
+        while (t < 39.0) {
+            s.kick(t, 0.9f)
+            s.snare(t + 0.25, 0.6f)
+            for (m in listOf(57, 64, 69, 72)) s.tone(t, 0.45, m, 0.2f)
+            s.tone(t + 0.25, 0.2, 76, 0.25f)
+            t += 0.5
+        }
+        val r = s.analyze()
+        val inside = weak.filter { it > 3.0 && it < 18.0 }
+        val heard = inside.filter { w -> r.onsets.any { abs(it.time - w) < 0.025 } }
+        val hard = r.chart.chart(Difficulty.HARD).notes.map { it.t / 1000.0 }.distinct()
+        val covered = heard.count { w -> hard.any { abs(it - w) < 0.025 } }
+        println("soft stream: heard %d/%d hard covered %d".format(heard.size, inside.size, covered))
+        assertTrue("re-strikes heard ${heard.size}/${inside.size}", heard.size >= inside.size / 2)
+        assertTrue("hard re-strikes covered $covered/${heard.size}", covered >= heard.size * 0.8)
+    }
+
     /** Verse / chorus alternation: boundaries on the part changes, repeated parts share a label. */
     @Test
     fun findsRepeatedParts() {
