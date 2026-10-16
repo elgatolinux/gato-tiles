@@ -205,6 +205,45 @@ class AnalyzerTest {
         assertTrue("hard swung notes $hardCovered/${inside.size}", hardCovered >= inside.size * 0.5)
     }
 
+    /**
+     * Fast repeated notes (Rush E style): every strong note is followed ~96 ms later by a
+     * quieter re-strike of the same key. The re-strikes barely raise the energy, but they form
+     * an even train, so Expert must play them; Hard keeps its own minimum gap.
+     */
+    @Test
+    fun fastRepeatedNotesBecomeTiles() {
+        val s = Synth(44100, 28.0, seed = 3)
+        val strong = ArrayList<Double>()
+        val weak = ArrayList<Double>()
+        var t = 1.0
+        var k = 0
+        while (t < 26.0) {
+            s.kick(t, 0.5f)
+            s.tone(t, 0.19, 52 + (k % 4) * 2, 0.25f)
+            s.tone(t, 0.09, 76, 0.22f)
+            strong.add(t)
+            s.tone(t + 0.096, 0.09, 76, 0.12f)
+            weak.add(t + 0.096)
+            t += 0.192
+            k++
+        }
+        val r = s.analyze()
+        val attacks = (strong + weak).sorted()
+        val expert = r.chart.chart(Difficulty.EXPERT).notes.map { it.t / 1000.0 }.distinct()
+        val inside = weak.filter { it > 3.0 && it < 24.0 }
+        // Re-strikes the onset detector heard: the generator must turn (almost) all of them into tiles.
+        val heard = inside.filter { w -> r.onsets.any { abs(it.time - w) < 0.025 } }
+        val covered = heard.count { w -> expert.any { abs(it - w) < 0.025 } }
+        val worst = expert.maxOf { tt -> attacks.minOf { abs(it - tt) } }
+        println("fast notes: expert tiles=%d weak heard %d/%d covered %d worst off %.4f".format(expert.size, heard.size, inside.size, covered, worst))
+        assertTrue("weak re-strikes heard ${heard.size}/${inside.size}", heard.size >= inside.size / 2)
+        assertTrue("weak re-strikes covered $covered/${heard.size}", covered >= heard.size * 0.9)
+        assertTrue("tiles off the real attacks: worst $worst", worst < 0.025)
+        val hard = r.chart.chart(Difficulty.HARD).notes.map { it.t / 1000.0 }.distinct()
+        assertTrue("hard keeps its gap", hard.zipWithNext().all { (a, b) -> b - a >= 0.1 })
+        assertTrue("expert is harder", r.chart.chart(Difficulty.EXPERT).level > r.chart.chart(Difficulty.HARD).level)
+    }
+
     /** Verse / chorus alternation: boundaries on the part changes, repeated parts share a label. */
     @Test
     fun findsRepeatedParts() {

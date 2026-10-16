@@ -4,6 +4,7 @@ import com.gatotiles.analyzer.AnalysisResult
 import com.gatotiles.analyzer.SongAnalyzer
 import com.gatotiles.analyzer.model.Difficulty
 import com.gatotiles.analyzer.model.Note
+import com.gatotiles.analyzer.rhythm.OnsetDetector
 import kotlinx.serialization.json.Json
 import java.awt.BasicStroke
 import java.awt.Color
@@ -21,6 +22,7 @@ import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -92,6 +94,13 @@ private fun dumpFile(file: File, r: AnalysisResult, out: File) {
     File(dir, "onsets.csv").printWriter().use { w ->
         w.println("t,strength,low,mid,high,persistence")
         for (o in r.onsets) w.println("%.4f,%.4f,%.4f,%.4f,%.4f,%.4f".format(o.time, o.strength, o.low, o.mid, o.high, o.persistence))
+    }
+    File(dir, "envelope.csv").printWriter().use { w ->
+        val env = OnsetDetector.envelopes(r.features)
+        w.println("t,total,low,mid,high,rmsDb")
+        for (i in env.total.indices) {
+            w.println("%.4f,%.4f,%.4f,%.4f,%.4f,%.1f".format(r.features.frameTime(i.toDouble()), env.total[i], env.low[i], env.mid[i], env.high[i], 20 * log10(max(r.features.rms[i], 1e-9f))))
+        }
     }
     File(dir, "beats.csv").printWriter().use { w ->
         w.println("i,t,downbeat")
@@ -220,8 +229,14 @@ private fun debugFile(file: File) {
             a += win / 2
         }
     }
-    val meter = com.gatotiles.analyzer.chart.ChartGenerator(f.durationSec, r.grid, r.onsets, r.melody, r.energy, 1).meterSummary()
-    println("   rejilla local: $meter")
+    val gen = com.gatotiles.analyzer.chart.ChartGenerator(f.durationSec, r.grid, r.onsets, r.melody, r.energy, 1)
+    println("   rejilla local: ${gen.meterSummary()}")
+    System.getenv("GT_CANDS")?.let { spec ->
+        // GT_CANDS=42-44 or GT_CANDS=42-44:HARD
+        val (range, diff) = (spec.split(":") + "EXPERT").let { it[0] to Difficulty.valueOf(it[1].uppercase()) }
+        val (a, b) = range.split("-").map { it.toDouble() }
+        gen.debugCandidates(diff, a, b).forEach { println("   $it") }
+    }
     val pers = r.onsets.map { it.persistence }.sorted()
     val str = r.onsets.map { it.strength }.sorted()
     fun q(l: List<Float>, p: Double) = if (l.isEmpty()) 0f else l[((l.size - 1) * p).toInt()]

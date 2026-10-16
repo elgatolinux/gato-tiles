@@ -32,7 +32,8 @@ ni internet.
   final). La vista «Así se verá» muestra la canción entera con sus colores. El modo por defecto
   de todas las canciones se elige en *Ajustes → Color durante la partida*.
 - **Generador de pistas**: analiza cada canción una sola vez (unos segundos) y crea 4
-  dificultades: Fácil, Normal, Difícil y Experto, con un nivel numérico.
+  dificultades: Fácil, Normal, Difícil y Experto, con un nivel numérico (1–15) que tiene en
+  cuenta la densidad media, los picos y las ráfagas rápidas.
 - **Dos modos**:
   - *Clásico*: como Piano Tiles. Tocas las teclas; tocar fuera o dejar escapar una tecla
     termina la partida. Hay estrellas por avance y coronas por precisión.
@@ -56,13 +57,13 @@ No hace falta root.
 Descarga el APK de la última versión en
 [Releases](https://github.com/elgatolinux/gato-tiles/releases/latest).
 
-**Opción A (sin cables):** abre `GatoTiles-0.3.0.apk` en el teléfono y acepta instalar desde
+**Opción A (sin cables):** abre `GatoTiles-0.3.1.apk` en el teléfono y acepta instalar desde
 orígenes desconocidos. Se instala encima de la versión anterior sin perder récords.
 
 **Opción B (USB):** activa *Opciones de desarrollador → Depuración USB*, conecta el teléfono y:
 
 ```sh
-~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.3.0.apk
+~/Android/Sdk/platform-tools/adb install -r GatoTiles-0.3.1.apk
 ```
 
 La primera vez pide permiso para leer la música. Para que la sincronía sea buena con tus
@@ -90,7 +91,8 @@ T=tools/build/install/tools/bin/tools
 
 $T analyze canciones-prueba                     # resumen (con las partes) y JSON de cada canción
 $T debug canciones-prueba                       # tempo, ataques, melodía, rejilla (diagnóstico)
-$T dump "canciones-prueba/x.flac"               # CSV con ataques, beats, melodía, partes y pistas
+$T dump "canciones-prueba/x.flac"               # CSV con ataques, envolvente, beats, melodía, partes y pistas
+GT_CANDS=40-45 $T debug "canciones-prueba/x.flac"   # qué ataques de ese tramo se vuelven teclas en Experto
 $T preview "canciones-prueba/x.flac" --diff EXPERT --lanes 3   # WAV con un clic por tecla + video MP4
 ```
 
@@ -123,6 +125,9 @@ y el video muestra las teclas cayendo con la música.
    - lo que cuenta como «golpe» se mide respecto a la música de alrededor, para que las partes
      suaves también tengan teclas;
    - los compases que se repiten reciben el mismo ritmo;
+   - las ráfagas rápidas y regulares (notas repetidas, escalas, trinos) se reconocen aunque
+     cada nota suene débil, porque una serie de distancias iguales no aparece por casualidad
+     (el crujido de un vinilo es irregular); Difícil y Experto las tocan casi completas;
    - Fácil sigue los tiempos y los golpes más fuertes; Experto sigue casi todos los ataques;
    - las largas siguen notas sostenidas y las dobles marcan los acentos más fuertes;
    - el carril sigue el contorno de la melodía (más agudo, más a la derecha), con 3 o 4 carriles;
@@ -140,9 +145,10 @@ capturas/   Capturas para este README
 ## Limitaciones conocidas
 
 - Los formatos dependen de los decodificadores del teléfono: APE o WMA normalmente no.
-- Una canción se analiza en unos segundos la primera vez; luego queda guardada. Al pasar de la
-  0.2 a la 0.3 se vuelven a analizar una vez (para detectar las partes); las teclas son las
-  mismas.
+- Una canción se analiza en unos segundos la primera vez; luego queda guardada. Cuando cambia
+  el generador (por ejemplo, de la 0.3.0 a la 0.3.1) cada canción se vuelve a analizar una vez.
+- En pasajes muy densos y caóticos (como el final de Rush E) no se separan todas las notas:
+  la pista sigue las que se distinguen, no cada nota de la partitura.
 - Las partes se detectan por el sonido: en canciones muy uniformes (loops, ambient) puede haber
   pocos cambios, y dos partes distintas pero muy parecidas pueden compartir color.
 - Las canciones de más de 20 minutos no se analizan.

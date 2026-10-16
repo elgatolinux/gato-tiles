@@ -39,13 +39,24 @@ internal class DifficultyParams(
     val jackMinGap: Double,
     /** Upper bound for the share of tiles that are holds. */
     val maxHoldFraction: Double,
+    /**
+     * Share of the notes of fast even trains (repeated notes, runs, streams) that get room in
+     * the bar's tile budget on top of the loudness-based one, so fast passages get their tiles
+     * even when they are not louder than the rest of the song.
+     */
+    val trainShare: Double,
+    /** Minimum time between two tiles that are both part of a fast train, seconds. */
+    val trainGap: Double,
 ) {
+    /** Whether this difficulty plays fast trains note by note (also between the grid lines). */
+    val playsTrains: Boolean get() = trainGap < minGap
+
     companion object {
         fun of(d: Difficulty): DifficultyParams = when (d) {
-            Difficulty.EASY -> DifficultyParams(2, 0.34, 0.8, 2.0, 0.45, 0.8, 1.0, 0.45, false, 0.0, 8.0, 0.60, 0.25)
-            Difficulty.NORMAL -> DifficultyParams(3, 0.21, 1.3, 3.3, 0.3, 0.55, 1.0, 0.40, false, 0.03, 4.0, 0.40, 0.20)
-            Difficulty.HARD -> DifficultyParams(3, 0.118, 2.0, 5.2, 0.18, 0.32, 0.75, 0.32, true, 0.07, 2.0, 0.26, 0.18)
-            Difficulty.EXPERT -> DifficultyParams(4, 0.095, 2.8, 7.4, 0.1, 0.15, 0.5, 0.28, true, 0.11, 1.0, 0.18, 0.15)
+            Difficulty.EASY -> DifficultyParams(2, 0.34, 0.8, 2.0, 0.45, 0.8, 1.0, 0.45, false, 0.0, 8.0, 0.60, 0.25, 0.0, 0.34)
+            Difficulty.NORMAL -> DifficultyParams(3, 0.21, 1.3, 3.3, 0.3, 0.55, 1.0, 0.40, false, 0.03, 4.0, 0.40, 0.20, 0.15, 0.21)
+            Difficulty.HARD -> DifficultyParams(3, 0.118, 2.0, 5.2, 0.18, 0.32, 0.75, 0.32, true, 0.07, 2.0, 0.26, 0.18, 0.5, 0.105)
+            Difficulty.EXPERT -> DifficultyParams(4, 0.095, 2.8, 7.4, 0.1, 0.15, 0.5, 0.28, true, 0.11, 1.0, 0.18, 0.15, 1.0, 0.07)
         }
     }
 }
@@ -79,6 +90,8 @@ class ChartGenerator(
         val offGrid: Boolean,
         /** Steady-pulse tile on a beat without any detected attack. */
         val filler: Boolean,
+        /** Part of a fast, evenly spaced train of attacks (see [trainMembers]). */
+        val train: Boolean = false,
     ) {
         var melScore = 0.0
         var score = 0.0
@@ -121,6 +134,25 @@ class ChartGenerator(
     /** Diagnostics: share of triplet-based and irregular beats. */
     fun meterSummary(): String =
         "tresillos %.0f%%, irregular %.0f%%, candidatos %d".format(meter.tripletShare * 100, meter.irregularShare * 100, candidates.size)
+
+    /** Diagnostics: every candidate between [t0] and [t1] and whether [d] keeps it. */
+    fun debugCandidates(d: Difficulty, t0: Double, t1: Double): List<String> {
+        val p = DifficultyParams.of(d)
+        val kept = select(p).map { it.time }.toHashSet()
+        val final = generate(d).notes.map { it.t }.toHashSet()
+        return candidates.filter { it.time in t0..t1 }.map { c ->
+            val bar = c.bar
+            val t0b = barBounds[bar]
+            val t1b = min(barBounds[bar + 1], durationSec)
+            val inten = energy.mean(t0b, t1b).toDouble()
+            "%.3f lvl %d %s%s%s on %.2f mel %.2f score %.3f rel %.2f %s %s %s | bar %d int %.2f".format(
+                c.time, c.level, if (c.offGrid) "off" else "   ", if (c.filler) "F" else " ", if (c.train) "T" else " ",
+                c.onsetScore, c.melScore, c.score, c.rel,
+                if (eligible(c, p)) "ok " else "-- ", if (c.time in kept) "SEL" else "   ", if (ms(c.time) in final) "NOTE" else "    ",
+                bar, inten,
+            )
+        }
+    }
 
     private fun buildGrid(): List<GridPoint> {
         val out = ArrayList<GridPoint>()
@@ -204,8 +236,73 @@ class ChartGenerator(
         else -> 4
     }
 
+    /**
+     * Onsets that belong to a fast, evenly spaced train of attacks (repeated notes, trills,
+     * runs, streams). A piano key struck again while the previous note still rings barely
+     * raises the energy, so such notes look weak, but a run of equal gaps does not happen by
+     * chance: vinyl crackle and other noise are irregular.
+     */
+    private fun trainMembers(): BooleanArray {
+        val out = BooleanArray(onsets.size)
+        val idx = onsets.indices.filter { onsets[it].strength >= 0.04f }
+        var a = 0
+        while (a < idx.size - 1) {
+            val first = onsetTimes[idx[a + 1]] - onsetTimes[idx[a]]
+            if (first < TRAIN_MIN_GAP || first > TRAIN_MAX_GAP) {
+                a++
+                continue
+            }
+            var b = a + 1
+            var slots = 1
+            var gap = first
+            while (b + 1 < idx.size) {
+                val d = onsetTimes[idx[b + 1]] - onsetTimes[idx[b]]
+                val tol = max(0.012, 0.12 * gap)
+                // A gap of two steps is one note the detector missed; the train goes on.
+                slots += when {
+                    abs(d - gap) <= tol -> 1
+                    abs(d - 2 * gap) <= 1.5 * tol -> 2
+                    else -> break
+                }
+                b++
+                gap = (onsetTimes[idx[b]] - onsetTimes[idx[a]]) / slots
+            }
+            val steps = b - a
+            // Too many missed notes and it is more likely chance than a real train.
+            if (steps + 1 >= TRAIN_MIN_LENGTH && 2 * (slots - steps) <= steps) {
+                for (k in a..b) out[idx[k]] = true
+                a = b
+            } else {
+                a++
+            }
+        }
+        return out
+    }
+
+    /** Onset strengths with the weak members of each train raised towards its strong ones. */
+    private fun trainStrengths(inTrain: BooleanArray): FloatArray {
+        val out = FloatArray(onsets.size) { onsets[it].strength }
+        var a = 0
+        while (a < onsets.size) {
+            if (!inTrain[a]) {
+                a++
+                continue
+            }
+            var b = a
+            while (b + 1 < onsets.size && (inTrain[b + 1] || onsets[b + 1].strength < 0.04f)) b++
+            val members = (a..b).filter { inTrain[it] }
+            val sorted = members.map { onsets[it].strength }.sorted()
+            val strong = sorted[sorted.size * 3 / 4]
+            for (k in members) out[k] = max(out[k], TRAIN_SHARE * strong)
+            a = b + 1
+        }
+        return out
+    }
+
     private fun buildCandidates(): List<Candidate> {
-        val strengthRef = localReference(onsetTimes, DoubleArray(onsets.size) { onsets[it].strength.toDouble() }, 5.0, 0.25)
+        val inTrain = trainMembers()
+        val strength = trainStrengths(inTrain)
+        val strengthRef = localReference(onsetTimes, DoubleArray(onsets.size) { strength[it].toDouble() }, 5.0, 0.25)
         // Nearest grid point of every onset; only the strongest onset near a grid point snaps to it.
         val nearest = IntArray(onsets.size) { -1 }
         val owner = HashMap<Int, Int>()
@@ -216,7 +313,7 @@ class ChartGenerator(
             if (gi < 0 || abs(gridTimes[gi] - o.time) > snapTol(gridPoints[gi])) continue
             nearest[i] = gi
             val prev = owner[gi]
-            if (prev == null || onsets[prev].strength < o.strength) owner[gi] = i
+            if (prev == null || strength[prev] < strength[i]) owner[gi] = i
         }
         val out = ArrayList<Candidate>()
         var lastTime = -1.0
@@ -228,7 +325,7 @@ class ChartGenerator(
             if (!snapped && o.time - lastTime < 0.06) continue
             val beat = grid.indexAt(o.time)
             val level = when {
-                !meter.regularAt(beat) -> levelByStrength(o.strength / strengthRef[i])
+                !meter.regularAt(beat) -> levelByStrength(strength[i] / strengthRef[i])
                 snapped -> gridPoints[gi].level
                 else -> 4
             }
@@ -237,11 +334,12 @@ class ChartGenerator(
                     time = o.time,
                     level = level,
                     onset = o,
-                    onsetScore = o.strength.toDouble(),
+                    onsetScore = strength[i].toDouble(),
                     bar = barIndexAt(o.time),
                     barPos = if (snapped && meter.regularAt(beat)) gridPoints[gi].barPos else -1,
                     offGrid = !snapped && meter.regularAt(beat),
                     filler = false,
+                    train = inTrain[i],
                 ),
             )
             lastTime = o.time
@@ -352,7 +450,8 @@ class ChartGenerator(
     private fun eligible(c: Candidate, p: DifficultyParams): Boolean {
         if (c.filler) return c.level <= min(p.maxLevel, 1)
         if (c.score < MIN_SCORE || c.rel < p.minRel) return false
-        if (c.offGrid || c.level > p.maxLevel) return c.rel >= p.offGridRel && c.level <= 4
+        // Train notes fall between the grid lines of fast passages but are real notes.
+        if (c.offGrid || c.level > p.maxLevel) return (c.rel >= p.offGridRel || (c.train && p.playsTrains)) && c.level <= 4
         return true
     }
 
@@ -366,19 +465,24 @@ class ChartGenerator(
             val nps = p.npsLow + (p.npsHigh - p.npsLow) * inten.pow(0.8)
             val pool = list.filter { eligible(it, p) }
             val real = pool.count { !it.filler }
-            var budget = min((barLen * nps).roundToInt(), max(real, if (inten > 0.25) 1 else 0))
+            val trains = pool.count { it.train }
+            var budget = min((barLen * nps + p.trainShare * trains).roundToInt(), max(real, if (inten > 0.25) 1 else 0))
             for (c in pool.sortedByDescending { it.score }) {
                 if (budget <= 0) break
-                val lo = chosen.floorKey(c.time)
-                val hi = chosen.ceilingKey(c.time)
-                if (lo != null && c.time - lo < p.minGap) continue
-                if (hi != null && hi - c.time < p.minGap) continue
+                val lo = chosen.floorEntry(c.time)?.value
+                val hi = chosen.ceilingEntry(c.time)?.value
+                if (lo != null && c.time - lo.time < gapBetween(lo, c, p)) continue
+                if (hi != null && hi.time - c.time < gapBetween(c, hi, p)) continue
                 chosen[c.time] = c
                 budget--
             }
         }
         return chosen.values.toList()
     }
+
+    /** Fast trains may be closer together than other tiles: their notes really are that fast. */
+    private fun gapBetween(a: Candidate, b: Candidate, p: DifficultyParams): Double =
+        if (a.train && b.train && p.playsTrains) p.trainGap else p.minGap
 
     private fun pitchAt(t: Double): Float {
         if (melody.isEmpty()) return Float.NaN
@@ -665,9 +769,23 @@ class ChartGenerator(
             while (notes[i].t - notes[j].t > 5000) j++
             peak = max(peak, (i - j + 1) / 5.0)
         }
+        // Short bursts and long fast streams are what make a chart hard, beyond its average.
+        var burst = 0.0
+        j = 0
+        for (i in distinct.indices) {
+            while (distinct[i] - distinct[j] > 2000) j++
+            burst = max(burst, (i - j + 1) / 2.0)
+        }
+        var stream = 1
+        var run = 1
+        for (i in 1 until distinct.size) {
+            run = if (distinct[i] - distinct[i - 1] <= 110) run + 1 else 1
+            stream = max(stream, run)
+        }
         val doubles = notes.size - distinct.size
         val holds = notes.count { it.d > 0 }
-        val raw = 1.25 * nps + 0.45 * peak + 6.0 * doubles / notes.size + 2.0 * holds / notes.size
+        val raw = 1.25 * nps + 0.45 * peak + 6.0 * doubles / notes.size + 2.0 * holds / notes.size +
+            0.3 * max(0.0, burst - 8.0) + 0.03 * max(0, min(stream, 40) - 4)
         // Fewer lanes are easier to read and reach.
         val laneFactor = if (lanes <= 3) 0.9 else 1.0
         return (raw * 1.1 * laneFactor).roundToInt().coerceIn(1, 15)
@@ -679,5 +797,10 @@ class ChartGenerator(
         private val LEVEL_WEIGHT = doubleArrayOf(1.25, 1.12, 1.0, 0.85, 0.72)
         private val NEIGHBOUR_BARS = intArrayOf(-2, -1, 1, 2)
         private const val MIN_SCORE = 0.045
+        /** Evenly spaced trains: gap range (seconds), minimum number of attacks and the strength weak members get. */
+        private const val TRAIN_MIN_GAP = 0.075
+        private const val TRAIN_MAX_GAP = 0.15
+        private const val TRAIN_MIN_LENGTH = 5
+        private const val TRAIN_SHARE = 0.6f
     }
 }
